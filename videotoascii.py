@@ -15,7 +15,7 @@ def downscale_image(image_path, scale_factor):
 def pixel_to_ascii(pixel):
     gray = int((pixel[0] + pixel[1] + pixel[2]) / 3)
     
-    ascii_chars = "@%#*+=-:. "
+    ascii_chars = " .-=+o#%@"
     
     return ascii_chars[int(gray / 32)]
 
