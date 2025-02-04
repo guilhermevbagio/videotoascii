@@ -1,54 +1,78 @@
 import argparse
+import json
+import cv2
+import time
 from PIL import Image
 
-def downscale_image(image_path, scale_factor):
-    image = Image.open(image_path)
-    
+ASCII_CHARS = " .-=+o#%@"
+
+def downscale_image(image, scale_factor):
     original_width, original_height = image.size
-    
     new_width = int(original_width * scale_factor)
     new_height = int(original_height * scale_factor)
-    
-    downscaled_image = image.resize((new_width, new_height))
-    return downscaled_image
+    return image.resize((new_width, new_height))
 
 def pixel_to_ascii(pixel):
     gray = int((pixel[0] + pixel[1] + pixel[2]) / 3)
-    
-    ascii_chars = " .-=+o#%@"
-    
-    return ascii_chars[int(gray / 32)]
+    return ASCII_CHARS[int(gray / 32)]
 
-def image_to_ascii(image_path, scale_factor=0.1):
-    image = downscale_image(image_path, scale_factor)
-    
+def image_to_ascii(image, scale_factor=0.1):
+    image = downscale_image(image, scale_factor)
     image = image.convert("RGB")
-    
     ascii_image = []
-    
     for y in range(image.height):
-        row = []
-        for x in range(image.width):
-            pixel = image.getpixel((x, y))
-            row.append(pixel_to_ascii(pixel))
+        row = [pixel_to_ascii(image.getpixel((x, y))) for x in range(image.width)]
         ascii_image.append("".join(row))
-    
     return "\n".join(ascii_image)
 
-def save_ascii_to_file(ascii_image, output_file="ascii_image.txt"):
+def video_to_ascii(video_path, scale_factor=0.1, output_file="ascii_frames.json"):
+    cap = cv2.VideoCapture(video_path)
+    ascii_frames = []
+    frame_count = 0
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        ascii_art = image_to_ascii(image, scale_factor)
+        ascii_frames.append(f"< {ascii_art} >")
+        
+        frame_count += 1
+        print(f"Processed frame {frame_count}", end="\r")
+    
+    cap.release()
+    
     with open(output_file, "w") as f:
-        f.write(ascii_image)
+        json.dump({"frames": ascii_frames}, f, indent=2)
+    
+    print(f"\nASCII frames saved to {output_file}")
+
+def play_ascii_video(json_file, frame_delay=0.1):
+    with open(json_file, "r") as f:
+        data = json.load(f)
+    
+    frames = data.get("frames", [])
+    
+    for frame in frames:
+        print("\033[H\033[J", end="")  # Clear screen
+        print(frame.strip("< >"))
+        time.sleep(frame_delay)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert an image to ASCII art.")
-    parser.add_argument("image_path", help="Path to the image to convert")
-    parser.add_argument("--scale", type=float, default=0.1, help="Scale factor to resize the image (default: 0.1)")
-    parser.add_argument("--output", type=str, default="ascii_image.txt", help="Output file to save the ASCII art (default: ascii_image.txt)")
+    parser = argparse.ArgumentParser(description="Convert a video to ASCII frames stored in JSON or play an ASCII video.")
+    parser.add_argument("video_path", nargs="?", help="Path to the video file")
+    parser.add_argument("--scale", type=float, default=0.1, help="Scale factor for resizing frames (default: 0.1)")
+    parser.add_argument("--output", type=str, default="ascii_frames.json", help="Output JSON file (default: ascii_frames.json)")
+    parser.add_argument("--play", type=str, help="Path to the ASCII JSON file to play")
+    parser.add_argument("--delay", type=float, default=0.1, help="Frame delay in seconds (default: 0.1)")
     
     args = parser.parse_args()
     
-    ascii_art = image_to_ascii(args.image_path, scale_factor=args.scale)
-    
-    save_ascii_to_file(ascii_art, output_file=args.output)
-    
-    print(f"ASCII art saved to {args.output}")
+    if args.play:
+        play_ascii_video(args.play, frame_delay=args.delay)
+    elif args.video_path:
+        video_to_ascii(args.video_path, scale_factor=args.scale, output_file=args.output)
+    else:
+        print("Please provide either a video file to convert or a JSON file to play.")
